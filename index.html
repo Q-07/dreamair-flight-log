@@ -14,10 +14,6 @@
 <body>
   <h2>Flight log entry</h2>
   <form id="flightForm">
-    <label>Flight ID
-      <input type="number" name="flightId" required>
-    </label>
-
     <label>Date
       <input type="date" name="date" required>
     </label>
@@ -85,9 +81,9 @@
         method: 'POST',
         body: formData
       })
-      .then(response => response.text())
-      .then(text => {
-        status.textContent = 'Flight saved ✅';
+      .then(response => response.json())
+      .then(result => {
+        status.textContent = 'Flight saved ✅ ID: ' + result.id;
         form.reset();
       })
       .catch(error => {
