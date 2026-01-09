@@ -5,29 +5,37 @@
   <title>Flight Log</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body { font-family: system-ui, -apple-system, sans-serif; padding: 1rem; }
+    body { font-family: system-ui, -apple-system, sans-serif; padding: 1rem; max-width: 700px; margin: 0 auto; }
+    h2, h3 { margin-top: 0; }
     label { display: block; margin-top: 0.75rem; }
-    input { width: 100%; padding: 0.4rem; box-sizing: border-box; }
+    input, select { width: 100%; padding: 0.4rem; box-sizing: border-box; }
     button { margin-top: 1rem; padding: 0.6rem 1rem; }
+    #summaryPanel { border: 1px solid #ccc; border-radius: 6px; padding: 1rem; background: #f9f9f9; }
+    #status { margin-top: 1rem; }
   </style>
 </head>
 <body>
   <h2>Flight log entry</h2>
+
   <form id="flightForm">
-    <label>Date
-      <input type="date" name="date" required>
+    <label>Registration
+      <select name="registration" required>
+        <option value="YL-NLO">YL-NLO</option>
+        <option value="F-BPEF">F-BPEF</option>
+        <option value="EC-KHL">EC-KHL</option>
+      </select>
     </label>
 
-    <label>Registration
-      <input type="text" name="registration" required>
+    <label>Date
+      <input type="date" id="date" name="date" required>
     </label>
 
     <label>Departure aerodrome
-      <input type="text" name="departure" required>
+      <input type="text" id="departure" name="departure" required>
     </label>
 
     <label>Arrival aerodrome
-      <input type="text" name="arrival" required>
+      <input type="text" id="arrival" name="arrival" required>
     </label>
 
     <label>Block OFF time
@@ -62,34 +70,114 @@
       <input type="text" name="student">
     </label>
 
-    <button type="submit">Save flight</button>
+    <button type="button" id="reviewButton">Review & sign</button>
   </form>
+
+  <div id="summaryPanel" style="display:none; margin-top:1rem;">
+    <h3>Review flight</h3>
+    <p id="summaryText"></p>
+
+    <label>Signature (type your name)
+      <input type="text" id="signature" required>
+    </label>
+
+    <button type="button" id="confirmButton">Confirm & save</button>
+    <button type="button" id="cancelButton">Cancel</button>
+  </div>
 
   <p id="status"></p>
 
   <script>
-    const scriptURL = 'https://script.google.com/macros/s/AKfycbw37xlqwkrecBO0sj5VzF_M31RQClYt5HjT9LxuTk7B5PKFga3jwNLqno04WK2CZ9cB/exec';
+    const scriptURL = 'YOUR_SCRIPT_URL_HERE'; // <-- paste your Apps Script /exec URL here
 
-    document.getElementById('flightForm').addEventListener('submit', function(e) {
-      e.preventDefault();
-      const form = e.target;
-      const status = document.getElementById('status');
+    const form = document.getElementById('flightForm');
+    const status = document.getElementById('status');
+    const summaryPanel = document.getElementById('summaryPanel');
+    const summaryText = document.getElementById('summaryText');
+    const reviewButton = document.getElementById('reviewButton');
+    const confirmButton = document.getElementById('confirmButton');
+    const cancelButton = document.getElementById('cancelButton');
+    const signatureInput = document.getElementById('signature');
+
+    // Set default values on page load
+    window.addEventListener('load', () => {
+      // Date = today in YYYY-MM-DD
+      const today = new Date().toISOString().slice(0, 10); // [web:127]
+      document.getElementById('date').value = today;
+
+      // Default aerodrome
+      document.getElementById('departure').value = 'LELL';
+      document.getElementById('arrival').value = 'LELL';
+    });
+
+    // 1) Show summary when clicking "Review & sign"
+    reviewButton.addEventListener('click', () => {
+      const formData = new FormData(form);
+
+      const registration = formData.get('registration');
+      const date = formData.get('date');
+      const departure = formData.get('departure');
+      const arrival = formData.get('arrival');
+      const blockOff = formData.get('blockOff');
+      const takeOff = formData.get('takeOff');
+      const landing = formData.get('landing');
+      const blockOn = formData.get('blockOn');
+      const landings = formData.get('landings');
+      const crew = formData.get('crew');
+      const pic = formData.get('pic');
+      const student = formData.get('student');
+
+      summaryText.innerHTML = `
+        <strong>Date:</strong> ${date}<br>
+        <strong>Reg:</strong> ${registration}<br>
+        <strong>From:</strong> ${departure} → <strong>To:</strong> ${arrival}<br>
+        <strong>Block:</strong> ${blockOff} - ${blockOn}<br>
+        <strong>Airborne:</strong> ${takeOff} - ${landing}<br>
+        <strong>Landings:</strong> ${landings}, <strong>Crew:</strong> ${crew}<br>
+        <strong>PIC:</strong> ${pic}, <strong>Student:</strong> ${student}
+      `;
+
+      signatureInput.value = '';
+      summaryPanel.style.display = 'block';
+    });
+
+    // 2) Cancel summary
+    cancelButton.addEventListener('click', () => {
+      summaryPanel.style.display = 'none';
+    });
+
+    // 3) Confirm & send to Apps Script
+    confirmButton.addEventListener('click', () => {
+      if (!signatureInput.value.trim()) {
+        alert('Please sign by typing your name.');
+        return;
+      }
 
       const formData = new FormData(form);
+      formData.append('signature', signatureInput.value.trim());
+
+      status.textContent = 'Saving...';
 
       fetch(scriptURL, {
         method: 'POST',
         body: formData
       })
-      .then(response => response.json())
-      .then(result => {
-        status.textContent = 'Flight saved ✅ ID: ' + result.id;
-        form.reset();
-      })
-      .catch(error => {
-        console.error(error);
-        status.textContent = 'Error saving flight';
-      });
+        .then(response => response.json())
+        .then(result => {
+          status.textContent = 'Flight saved ✅ ID: ' + result.id;
+          form.reset();
+          summaryPanel.style.display = 'none';
+
+          // Reapply defaults after reset
+          const today = new Date().toISOString().slice(0, 10);
+          document.getElementById('date').value = today;
+          document.getElementById('departure').value = 'LELL';
+          document.getElementById('arrival').value = 'LELL';
+        })
+        .catch(error => {
+          console.error(error);
+          status.textContent = 'Error saving flight';
+        });
     });
   </script>
 </body>
