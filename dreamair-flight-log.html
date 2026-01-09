@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Flight Log</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; padding: 1rem; }
+    label { display: block; margin-top: 0.75rem; }
+    input { width: 100%; padding: 0.4rem; box-sizing: border-box; }
+    button { margin-top: 1rem; padding: 0.6rem 1rem; }
+  </style>
+</head>
+<body>
+  <h2>Flight log entry</h2>
+  <form id="flightForm">
+    <label>Flight ID
+      <input type="number" name="flightId" required>
+    </label>
+
+    <label>Date
+      <input type="date" name="date" required>
+    </label>
+
+    <label>Registration
+      <input type="text" name="registration" required>
+    </label>
+
+    <label>Departure aerodrome
+      <input type="text" name="departure" required>
+    </label>
+
+    <label>Arrival aerodrome
+      <input type="text" name="arrival" required>
+    </label>
+
+    <label>Block OFF time
+      <input type="time" name="blockOff" required>
+    </label>
+
+    <label>Take-off time
+      <input type="time" name="takeOff" required>
+    </label>
+
+    <label>Landing time
+      <input type="time" name="landing" required>
+    </label>
+
+    <label>Block ON time
+      <input type="time" name="blockOn" required>
+    </label>
+
+    <label>Number of landings
+      <input type="number" name="landings" value="1" required>
+    </label>
+
+    <label>Number of crew
+      <input type="number" name="crew" value="2" required>
+    </label>
+
+    <label>PIC name
+      <input type="text" name="pic" required>
+    </label>
+
+    <label>Student name
+      <input type="text" name="student">
+    </label>
+
+    <button type="submit">Save flight</button>
+  </form>
+
+  <p id="status"></p>
+
+  <script>
+    const scriptURL = 'https://script.google.com/macros/s/AKfycbw37xlqwkrecBO0sj5VzF_M31RQClYt5HjT9LxuTk7B5PKFga3jwNLqno04WK2CZ9cB/exec';
+
+    document.getElementById('flightForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const form = e.target;
+      const status = document.getElementById('status');
+
+      const formData = new FormData(form);
+
+      fetch(scriptURL, {
+        method: 'POST',
+        body: formData
+      })
+      .then(response => response.text())
+      .then(text => {
+        status.textContent = 'Flight saved ✅';
+        form.reset();
+      })
+      .catch(error => {
+        console.error(error);
+        status.textContent = 'Error saving flight';
+      });
+    });
+  </script>
+</body>
+</html>
