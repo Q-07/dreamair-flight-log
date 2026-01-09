@@ -10,8 +10,23 @@
     label { display: block; margin-top: 0.75rem; }
     input, select { width: 100%; padding: 0.4rem; box-sizing: border-box; }
     button { margin-top: 1rem; padding: 0.6rem 1rem; }
-    #summaryPanel { border: 1px solid #ccc; border-radius: 6px; padding: 1rem; background: #f9f9f9; }
+    #summaryPanel { border: 1px solid #ccc; border-radius: 6px; padding: 1rem; background: #f9f9f9; margin-top: 1rem; }
     #status { margin-top: 1rem; }
+    #signatureCanvas {
+      border: 1px solid #666;
+      border-radius: 4px;
+      width: 100%;
+      height: 150px;
+      touch-action: none; /* smoother on mobile */
+    }
+    #signatureButtons {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+    #signatureButtons button {
+      flex: 1;
+    }
   </style>
 </head>
 <body>
@@ -39,19 +54,19 @@
     </label>
 
     <label>Block OFF time
-      <input type="time" name="blockOff" required>
+      <input type="time" id="blockOff" name="blockOff" required>
     </label>
 
     <label>Take-off time
-      <input type="time" name="takeOff" required>
+      <input type="time" id="takeOff" name="takeOff" required>
     </label>
 
     <label>Landing time
-      <input type="time" name="landing" required>
+      <input type="time" id="landing" name="landing" required>
     </label>
 
     <label>Block ON time
-      <input type="time" name="blockOn" required>
+      <input type="time" id="blockOn" name="blockOn" required>
     </label>
 
     <label>Number of landings
@@ -73,13 +88,22 @@
     <button type="button" id="reviewButton">Review & sign</button>
   </form>
 
-  <div id="summaryPanel" style="display:none; margin-top:1rem;">
+  <div id="summaryPanel" style="display:none;">
     <h3>Review flight</h3>
     <p id="summaryText"></p>
 
-    <label>Signature (type your name)
+    <p id="timeSummary"></p>
+
+    <label>Typed signature (for quick search)
       <input type="text" id="signature" required>
     </label>
+
+    <p>Handwritten signature:</p>
+    <canvas id="signatureCanvas"></canvas>
+    <div id="signatureButtons">
+      <button type="button" id="clearSignature">Clear</button>
+      <button type="button" id="acceptSignature">Lock signature</button>
+    </div>
 
     <button type="button" id="confirmButton">Confirm & save</button>
     <button type="button" id="cancelButton">Cancel</button>
@@ -88,29 +112,161 @@
   <p id="status"></p>
 
   <script>
-    const scriptURL = 'YOUR_SCRIPT_URL_HERE'; // <-- paste your Apps Script /exec URL here
+    const scriptURL = 'https://script.google.com/macros/s/AKfycbwgILjuP4urmm1V8cHSzS59MR8XKcbKjYS5rmUrX1W64TnjCbU9OOp_6MyKFmmD94nf/exec'; // <-- your Apps Script /exec URL
 
     const form = document.getElementById('flightForm');
     const status = document.getElementById('status');
     const summaryPanel = document.getElementById('summaryPanel');
     const summaryText = document.getElementById('summaryText');
+    const timeSummary = document.getElementById('timeSummary');
     const reviewButton = document.getElementById('reviewButton');
     const confirmButton = document.getElementById('confirmButton');
     const cancelButton = document.getElementById('cancelButton');
     const signatureInput = document.getElementById('signature');
+    const signatureCanvas = document.getElementById('signatureCanvas');
+    const clearSignatureBtn = document.getElementById('clearSignature');
+    const acceptSignatureBtn = document.getElementById('acceptSignature');
 
-    // Set default values on page load
-    window.addEventListener('load', () => {
-      // Date = today in YYYY-MM-DD
-      const today = new Date().toISOString().slice(0, 10); // [web:127]
-      document.getElementById('date').value = today;
+    let signaturePad;
+    let signatureLocked = false;
+    let signatureImageDataUrl = '';
 
-      // Default aerodrome
-      document.getElementById('departure').value = 'LELL';
-      document.getElementById('arrival').value = 'LELL';
+    // ---- Helper: init signature canvas ----
+    function resizeCanvas() {
+      const ratio = window.devicePixelRatio || 1;
+      signatureCanvas.width = signatureCanvas.offsetWidth * ratio;
+      signatureCanvas.height = signatureCanvas.offsetHeight * ratio;
+      const ctx = signatureCanvas.getContext('2d');
+      ctx.scale(ratio, ratio);
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, signatureCanvas.offsetWidth, signatureCanvas.offsetHeight);
+    }
+
+    let drawing = false;
+    let lastX = 0;
+    let lastY = 0;
+
+    function startDrawing(x, y) {
+      if (signatureLocked) return;
+      drawing = true;
+      lastX = x;
+      lastY = y;
+    }
+
+    function drawLine(x, y) {
+      if (!drawing || signatureLocked) return;
+      const ctx = signatureCanvas.getContext('2d');
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(lastX, lastY);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      lastX = x;
+      lastY = y;
+    }
+
+    function stopDrawing() {
+      drawing = false;
+    }
+
+    // Mouse events
+    signatureCanvas.addEventListener('mousedown', (e) => {
+      const rect = signatureCanvas.getBoundingClientRect();
+      startDrawing(e.clientX - rect.left, e.clientY - rect.top);
     });
 
-    // 1) Show summary when clicking "Review & sign"
+    signatureCanvas.addEventListener('mousemove', (e) => {
+      const rect = signatureCanvas.getBoundingClientRect();
+      drawLine(e.clientX - rect.left, e.clientY - rect.top);
+    });
+
+    window.addEventListener('mouseup', stopDrawing);
+
+    // Touch events
+    signatureCanvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const rect = signatureCanvas.getBoundingClientRect();
+      const touch = e.touches[0];
+      startDrawing(touch.clientX - rect.left, touch.clientY - rect.top);
+    }, { passive: false });
+
+    signatureCanvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const rect = signatureCanvas.getBoundingClientRect();
+      const touch = e.touches[0];
+      drawLine(touch.clientX - rect.left, touch.clientY - rect.top);
+    }, { passive: false });
+
+    signatureCanvas.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      stopDrawing();
+    }, { passive: false });
+
+    clearSignatureBtn.addEventListener('click', () => {
+      signatureLocked = false;
+      resizeCanvas();
+    });
+
+    acceptSignatureBtn.addEventListener('click', () => {
+      signatureLocked = true;
+      signatureImageDataUrl = signatureCanvas.toDataURL('image/png');
+    });
+
+    window.addEventListener('resize', () => {
+      if (!signatureLocked) {
+        resizeCanvas();
+      }
+    });
+
+    // ---- Set default values on load ----
+    window.addEventListener('load', () => {
+      // Date = today
+      const today = new Date().toISOString().slice(0, 10);
+      document.getElementById('date').value = today;
+
+      // Default aerodromes
+      document.getElementById('departure').value = 'LELL';
+      document.getElementById('arrival').value = 'LELL';
+
+      // Default times = current time (HH:MM)
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const currentTime = `${hh}:${mm}`; // [web:129][web:130]
+
+      document.getElementById('blockOff').value = currentTime;
+      document.getElementById('takeOff').value = currentTime;
+      document.getElementById('landing').value = currentTime;
+      document.getElementById('blockOn').value = currentTime;
+
+      resizeCanvas();
+    });
+
+    // ---- Helper: compute HH:MM difference on client for summary ----
+    function parseMinutes(t) {
+      if (!t) return 0;
+      const parts = t.split(':');
+      if (parts.length < 2) return 0;
+      const h = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      if (isNaN(h) || isNaN(m)) return 0;
+      return h * 60 + m;
+    }
+
+    function diffHHMM(start, end) {
+      const s = parseMinutes(start);
+      const e = parseMinutes(end);
+      let endMins = e;
+      if (endMins < s) endMins += 24 * 60;
+      const diff = endMins - s;
+      const h = Math.floor(diff / 60);
+      const m = diff % 60;
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`; // [web:139]
+    }
+
+    // ---- 1) Show summary when clicking "Review & sign" ----
     reviewButton.addEventListener('click', () => {
       const formData = new FormData(form);
 
@@ -127,6 +283,9 @@
       const pic = formData.get('pic');
       const student = formData.get('student');
 
+      const flightTime = diffHHMM(blockOff, blockOn);
+      const maintenanceTime = diffHHMM(takeOff, landing);
+
       summaryText.innerHTML = `
         <strong>Date:</strong> ${date}<br>
         <strong>Reg:</strong> ${registration}<br>
@@ -137,24 +296,36 @@
         <strong>PIC:</strong> ${pic}, <strong>Student:</strong> ${student}
       `;
 
+      timeSummary.innerHTML = `
+        <strong>Flight time (Block ON - Block OFF):</strong> ${flightTime}<br>
+        <strong>Maintenance time (Landing - Take-off):</strong> ${maintenanceTime}
+      `;
+
       signatureInput.value = '';
+      signatureLocked = false;
+      resizeCanvas();
       summaryPanel.style.display = 'block';
     });
 
-    // 2) Cancel summary
+    // ---- 2) Cancel summary ----
     cancelButton.addEventListener('click', () => {
       summaryPanel.style.display = 'none';
     });
 
-    // 3) Confirm & send to Apps Script
+    // ---- 3) Confirm & send to Apps Script ----
     confirmButton.addEventListener('click', () => {
       if (!signatureInput.value.trim()) {
-        alert('Please sign by typing your name.');
+        alert('Please add your typed signature.');
+        return;
+      }
+      if (!signatureImageDataUrl) {
+        alert('Please draw and accept your handwritten signature.');
         return;
       }
 
       const formData = new FormData(form);
       formData.append('signature', signatureInput.value.trim());
+      formData.append('signatureImage', signatureImageDataUrl);
 
       status.textContent = 'Saving...';
 
@@ -164,15 +335,32 @@
       })
         .then(response => response.json())
         .then(result => {
-          status.textContent = 'Flight saved ✅ ID: ' + result.id;
+          status.textContent =
+            'Flight saved ✅ ID: ' + result.id +
+            ' | Flight time: ' + result.flightTime +
+            ' | Maintenance time: ' + result.maintenanceTime;
+
           form.reset();
           summaryPanel.style.display = 'none';
 
-          // Reapply defaults after reset
           const today = new Date().toISOString().slice(0, 10);
           document.getElementById('date').value = today;
+
+          const now = new Date();
+          const hh = String(now.getHours()).padStart(2, '0');
+          const mm = String(now.getMinutes()).padStart(2, '0');
+          const currentTime = `${hh}:${mm}`;
+
           document.getElementById('departure').value = 'LELL';
           document.getElementById('arrival').value = 'LELL';
+          document.getElementById('blockOff').value = currentTime;
+          document.getElementById('takeOff').value = currentTime;
+          document.getElementById('landing').value = currentTime;
+          document.getElementById('blockOn').value = currentTime;
+
+          signatureLocked = false;
+          signatureImageDataUrl = '';
+          resizeCanvas();
         })
         .catch(error => {
           console.error(error);
